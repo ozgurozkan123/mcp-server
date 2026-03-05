@@ -1,13 +1,13 @@
 """
-Burp Suite MCP Server - Standalone Deployment
+Burp Suite MCP Server - Standalone Deployment with Burp Suite Professional
 
 This is a standalone MCP server that provides:
 1. Utility tools (URL encoding/decoding, Base64, random string generation)
 2. HTTP request tools for making requests to targets
-3. Proxy connectivity to a running Burp Suite MCP server (when available)
+3. Burp Suite Professional integration (installed in container)
+4. Proxy connectivity to a running Burp Suite MCP server (when available)
 
-The original Burp Suite MCP server is a Java extension that runs inside Burp Suite.
-This Python server provides similar utility functions that can run independently.
+The Burp Suite Professional JAR is installed in this container at /opt/burpsuite/burpsuite_pro.jar
 """
 
 import os
@@ -15,12 +15,142 @@ import base64
 import random
 import string
 import urllib.parse
+import subprocess
+import json
 from typing import Optional
 import httpx
 from fastmcp import FastMCP
 
 # Create the MCP server
 mcp = FastMCP("burp-suite-mcp")
+
+# Burp Suite paths
+BURP_JAR = os.getenv("BURP_JAR", "/opt/burpsuite/burpsuite_pro.jar")
+JAVA_HOME = os.getenv("JAVA_HOME", "/usr/lib/jvm/temurin-21-jre-amd64")
+
+
+@mcp.tool()
+def check_burp_installation() -> str:
+    """
+    Checks if Burp Suite Professional is installed and returns version info.
+    
+    Returns:
+        Installation status and version information
+    """
+    result = {
+        "burp_jar_exists": os.path.exists(BURP_JAR),
+        "burp_jar_path": BURP_JAR,
+        "java_home": JAVA_HOME,
+        "java_exists": os.path.exists(f"{JAVA_HOME}/bin/java"),
+        "license_configured": os.path.exists("/root/.BurpSuite/prefs.xml")
+    }
+    
+    # Check Java version
+    try:
+        java_version = subprocess.run(
+            [f"{JAVA_HOME}/bin/java", "-version"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        result["java_version"] = java_version.stderr.strip()
+    except Exception as e:
+        result["java_version"] = f"Error: {str(e)}"
+    
+    # Check Burp JAR file size
+    if os.path.exists(BURP_JAR):
+        result["burp_jar_size_mb"] = round(os.path.getsize(BURP_JAR) / (1024 * 1024), 2)
+    
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_burp_command(
+    headless: bool = True,
+    project_file: Optional[str] = None,
+    config_file: Optional[str] = None,
+    user_config_file: Optional[str] = None
+) -> str:
+    """
+    Generates the command to run Burp Suite Professional.
+    
+    Args:
+        headless: Run in headless mode (no GUI). Default: True
+        project_file: Path to a Burp project file to open
+        config_file: Path to a project-level config file
+        user_config_file: Path to a user-level config file
+    
+    Returns:
+        The command that can be used to run Burp Suite
+    """
+    java_bin = f"{JAVA_HOME}/bin/java"
+    
+    cmd_parts = [
+        java_bin,
+        "-Xmx2g",  # Max heap size
+    ]
+    
+    if headless:
+        cmd_parts.append("-Djava.awt.headless=true")
+    
+    cmd_parts.extend(["-jar", BURP_JAR])
+    
+    if project_file:
+        cmd_parts.extend(["--project-file", project_file])
+    
+    if config_file:
+        cmd_parts.extend(["--config-file", config_file])
+    
+    if user_config_file:
+        cmd_parts.extend(["--user-config-file", user_config_file])
+    
+    return " ".join(cmd_parts)
+
+
+@mcp.tool()
+def run_burp_headless(timeout_seconds: int = 30) -> str:
+    """
+    Starts Burp Suite Professional in headless mode for a brief check.
+    Note: Long-running Burp instances should be managed separately.
+    
+    Args:
+        timeout_seconds: How long to run Burp before terminating (max 60 seconds)
+    
+    Returns:
+        Burp Suite startup output
+    """
+    timeout_seconds = min(timeout_seconds, 60)  # Cap at 60 seconds
+    
+    try:
+        java_bin = f"{JAVA_HOME}/bin/java"
+        cmd = [
+            java_bin,
+            "-Xmx1g",
+            "-Djava.awt.headless=true",
+            "-jar", BURP_JAR,
+            "--diagnostics"
+        ]
+        
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds
+        )
+        
+        return f"""Burp Suite Diagnostics:
+Exit Code: {result.returncode}
+
+STDOUT:
+{result.stdout[:5000] if result.stdout else '(empty)'}
+
+STDERR:
+{result.stderr[:5000] if result.stderr else '(empty)'}
+"""
+    except subprocess.TimeoutExpired:
+        return f"Burp Suite ran for {timeout_seconds} seconds (timeout - this is expected for startup check)"
+    except Exception as e:
+        return f"Error running Burp Suite: {str(e)}"
 
 
 @mcp.tool()
@@ -138,8 +268,6 @@ async def send_http_request(
     Returns:
         Response including status code, headers, and body
     """
-    import json
-    
     parsed_headers = {}
     if headers:
         try:
@@ -244,8 +372,6 @@ def jwt_decode(token: str) -> str:
     Returns:
         JSON string containing the decoded header and payload
     """
-    import json
-    
     try:
         parts = token.split('.')
         if len(parts) != 3:
@@ -282,8 +408,6 @@ def analyze_url(url: str) -> str:
     Returns:
         JSON string with URL components (scheme, host, port, path, query params, etc.)
     """
-    import json
-    
     try:
         parsed = urllib.parse.urlparse(url)
         query_params = dict(urllib.parse.parse_qsl(parsed.query))
@@ -310,49 +434,46 @@ def get_burp_connection_info() -> str:
     """
     Returns information about connecting to a Burp Suite MCP server.
     
-    This standalone server provides utility functions. To connect to a running
-    Burp Suite instance with full functionality (proxy history, repeater, intruder, etc.),
-    you need to:
-    
-    1. Install the Burp Suite MCP extension in Burp Suite
-    2. Configure the MCP server in the extension settings
-    3. Connect your MCP client to the Burp SSE MCP server
+    This server has Burp Suite Professional installed at /opt/burpsuite/burpsuite_pro.jar
     
     Returns:
-        Instructions for connecting to Burp Suite MCP server
+        Instructions and installation status for Burp Suite MCP server
     """
-    return """
-Burp Suite MCP Server Connection Information:
+    # Check installation status
+    burp_exists = os.path.exists(BURP_JAR)
+    license_exists = os.path.exists("/root/.BurpSuite/prefs.xml")
+    
+    return f"""
+Burp Suite MCP Server - Installation Status:
 
-This standalone MCP server provides utility tools that work independently:
-- URL encoding/decoding
-- Base64 encoding/decoding
-- Random string generation
-- HTTP request sending
-- HTML encoding/decoding
-- Hash computation
-- JWT decoding
-- URL analysis
+Burp Suite Professional Installed: {'Yes' if burp_exists else 'No'}
+Burp JAR Location: {BURP_JAR}
+License Configured: {'Yes' if license_exists else 'No'}
+Java Home: {JAVA_HOME}
 
-For full Burp Suite integration (proxy history, repeater, intruder, scanner, etc.),
-you need the Burp Suite extension:
+This MCP server provides the following tools:
 
-1. Install the MCP extension in Burp Suite (from BApp Store or build from source)
-2. Configure the extension in Burp's MCP tab
-3. The extension exposes an SSE MCP server (default: http://127.0.0.1:9876)
-4. Connect your MCP client to that URL
+UTILITY TOOLS (work independently):
+- url_encode/url_decode: URL encoding/decoding
+- base64_encode/base64_decode: Base64 encoding/decoding
+- html_encode/html_decode: HTML entity encoding/decoding
+- generate_random_string: Generate random strings
+- hash_string: Compute MD5, SHA1, SHA256, SHA512 hashes
+- jwt_decode: Decode JWT tokens
+- analyze_url: Parse and analyze URLs
+- send_http_request: Send HTTP requests
 
-Available tools in the Burp Suite extension:
-- send_http1_request: Send HTTP/1.1 requests through Burp
-- send_http2_request: Send HTTP/2 requests through Burp
-- create_repeater_tab: Create a Repeater tab with a request
-- send_to_intruder: Send a request to Intruder
-- get_proxy_http_history: View proxy HTTP history
-- get_scanner_issues: View scanner findings (Professional only)
-- generate_collaborator_payload: Generate OOB payloads (Professional only)
-- And more...
+BURP SUITE TOOLS:
+- check_burp_installation: Verify Burp Suite installation
+- get_burp_command: Generate command to run Burp Suite
+- run_burp_headless: Run Burp diagnostics in headless mode
 
-For more information: https://github.com/PortSwigger/mcp-server
+TO RUN BURP SUITE INTERACTIVELY:
+Use the get_burp_command tool to generate the command, then run it in a terminal
+with X11 forwarding or a display server.
+
+For full Burp Suite extension integration (proxy history, repeater, intruder, scanner, etc.),
+install the MCP extension from: https://github.com/PortSwigger/mcp-server
 """
 
 
