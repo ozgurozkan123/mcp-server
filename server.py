@@ -361,9 +361,10 @@ if __name__ == "__main__":
     # Get port from environment (Render sets this automatically)
     port = int(os.getenv("PORT", 8000))
     
+    # Use HTTP transport for better compatibility with remote deployment
+    # HTTP transport creates endpoint at /mcp
     mcp.run(
-        transport="sse",
+        transport="http",
         host="0.0.0.0",
-        port=port,
-        path="/mcp"
+        port=port
     )
