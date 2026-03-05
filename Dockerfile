@@ -7,18 +7,16 @@ RUN apt-get update && apt-get install -y \
     wget \
     unzip \
     gnupg \
-    software-properties-common \
     fontconfig \
     libfreetype6 \
     libfontconfig1 \
-    xvfb \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Java 21 (required for Burp Suite)
-RUN apt-get update && \
-    apt-get install -y wget && \
-    wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor -o /etc/apt/trusted.gpg.d/adoptium.gpg && \
-    echo "deb https://packages.adoptium.net/artifactory/deb $(. /etc/os-release && echo $VERSION_CODENAME) main" > /etc/apt/sources.list.d/adoptium.list && \
+# Install Eclipse Temurin JDK 21 from Adoptium
+RUN mkdir -p /etc/apt/keyrings && \
+    wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor -o /etc/apt/keyrings/adoptium.gpg && \
+    echo "deb [signed-by=/etc/apt/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb bookworm main" > /etc/apt/sources.list.d/adoptium.list && \
     apt-get update && \
     apt-get install -y temurin-21-jre && \
     rm -rf /var/lib/apt/lists/*
@@ -45,7 +43,7 @@ RUN cat > /root/.BurpSuite/prefs.xml << 'PREFS_EOF'
 <entry key="free.suite.alertsdisplayaliasesaliases">[]</entry>
 <entry key="free.suite.feedbackReportingEnabled">false</entry>
 <entry key="eulasAccepted">11</entry>
-<entry key="license">Ab+OPxMAFmvP3SGvKbSCgajDRxJeu7vElzEMOubjpaGvYAn2zh0uJq9gCfbOHS4mzSXsTMNw40Hm0TSLUxjLJMEboSlAb3podB+Qkd39djfiIL5RXoHhylLLhtiJrZoWNGDZeOQtHFCeNjqSAWM56XKF6tBnBSTTlOYo0ACamctE6ZsAjB/N/mpKbxt77w7haWtTmFPYkVdCHprK3aaVREqxNA6EslkULcZoh4uWoN9qySk6DVRlqUGiRl0k+68mgSnTQC2noB6W2aR0eoM5GueTXP++QGZix/1KLW4IMzMAAKLJOlrhUNUDWMIxrmRruFLLXa4lxqte/hp/9XbYHOIkx+ZFtjTBrru5K8CqW8D4LpKmOxMvrHp9xBwDo/EshQ1JK4tEj7lly/ngMQUIzFzOTK3ljfP8qit5CenA1N+4WngcDl4xsRLWky3EjS3FEVumQbWbh4LyE4puC2eYWBA3+SEywTMRYrBVPz6FosNI8wWnp7TxiBgW2JniPPnS89y8iwsRTu2M+0m/vINgR2fZIjQ+4VqUxyaROjmgN5jCt52rNabEFlWd5IXnFS8n+neQpNUIvsNosNrh6ti665JbTnvFZEjmSLxbO3mJu5a6g9MNZE8AVts6Ch/g80dP7uLPx4vTze2Tbdsortvqp4z9NsZZ3lyNPzDkfefCLxvvWFsRg4qmJOc8JyiHz5qHl4h2fatUlBW/168Iznm4/4EfqDB/+FRYdR0qK3i4FjJ3ATb+milL2v4f2F2IVVQ2FabdV3mde8Z4HFKWxlw9iBBrTwlzY3f/aBaHsUXy7HM=</entry>
+<entry key="license">Ab+OPxMAFmvP3SGvKbSCgajDRxJeu7vElzEMOubjpaGvYAn2zh0uJq9gCfbOHS4mzSXsTMNw40Hm0TSLUxjLJMEboSlAb3podB+Qkd39djfiIL5RXoHhylLLhtiJrZoWNGDZeOQtHFCeNjqSAWM56XKF6tBnBSTTlOYo0ACamctE6ZsAjB/N/mpKbxt77w7haWtTmFPYkVdCHprK3aaVREqxNA6EslkULcZoh4uWoN9qySk6DVRlqUGiRl0k+68mgSnTQC2noB6W2aR0eoM5GueTXP++QGZix/1KLW4IMzMAAKLJOlrhUNUDWMIxrmRruFLLXa4lxqte/hp/9XbYHOIkx+ZFtjTBrru5K8CqW8D4LpKmOxMvrHp9xBwDo/EshQ1JK4tEj7lly/ngMQUIzFzOTK3ljfP8qit5CenA1N+4WngcDl4xsRLWky3EjS3FEVumQbWbh4LyE4puC2eYWBA3+SEywTMRYrBVPz6FosNI8wWnp7TxiBgW2JniPPnS89y8iwsRTu2M+0m/vINgR2fZIjQ+4VqUwyaROjmgN5jCt52rNabEFlWd5IXnFS8n+neQpNUIvsNosNrh6ti665JbTnvFZEjmSLxbO3mJu5a6g9MNZE8AVts6Ch/g80dP7uLPx4vTze2Tbdsortvqp4z9NsZZ3lyNPzDkfefCLxvvWFsRg4qmJOc8JyiHz5qHl4h2fatUlBW/168Iznm4/4EfqDB/+FRYdR0qK3i4FjJ3ATb+milL2v4f2F2IVVQ2FabdV3mde8Z4HFKWxlw9iBBrTwlzY3f/aBaHsUXy7HM=</entry>
 </properties>
 PREFS_EOF
 
